@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>DMX 512 Steuerung</title>
+  <style>
+    table { border-collapse: collapse; table-layout: fixed; width: 800px; }
+    th, td { border: 1px solid #aaa; padding: 4px 8px; text-align: center; }
+    th, td { width: 25%; }
+    input[type=range] { width: 120px; }
+  </style>
+</head>
+<body>
+  <h1>DMX 512 Steuerung</h1>
+  <table>
+    <tr><th>Kanal</th><th>Wert</th><th>An/Aus</th><th>Status</th></tr>
+    <tbody id="dmxTable"></tbody>
+  </table>
+  <br>
+  <button onclick="sendAll()">Alle Werte senden</button>
+  <script>
+    // Initialwerte
+    let dmx = Array(513).fill(0);
+    function makeRow(i) {
+      return `<tr>
+        <td>${i}</td>
+        <td><input type='range' min='0' max='255' value='0' id='slider${i}' oninput='sliderChanged(${i})'></td>
+        <td><input type='checkbox' id='toggle${i}' onchange='toggleChanged(${i})'></td>
+        <td><span id='status${i}'>0</span></td>
+      </tr>`;
+    }
+    let table = document.getElementById('dmxTable');
+    let html = '';
+    for(let i=1;i<=512;i++) html += makeRow(i);
+    table.innerHTML = html;
+    function sliderChanged(i) {
+      let val = document.getElementById('slider'+i).value;
+      dmx[i] = parseInt(val);
+      document.getElementById('status'+i).textContent = val;
+      document.getElementById('toggle'+i).checked = (val==255);
+      sendSingle(i, val);
+    }
+    function toggleChanged(i) {
+      let checked = document.getElementById('toggle'+i).checked;
+      let val = checked ? 255 : 0;
+      dmx[i] = val;
+      document.getElementById('slider'+i).value = val;
+      document.getElementById('status'+i).textContent = val;
+      sendSingle(i, val);
+    }
+    function sendSingle(i, val) {
+      let params = `${i}=${val}`;
+      fetch('/dmx?' + params)
+        .then(r => r.text())
+        .then(txt => console.log('DMX', i, val, txt));
+    }
+    function sendAll() {
+      let params = [];
+      for(let i=1;i<=512;i++) params.push(i+'='+dmx[i]);
+      fetch('/dmx?' + params.join('&'))
+        .then(r => r.text())
+        .then(txt => alert('Gesendet!'));
+    }
+  </script>
+</body>
+</html>
