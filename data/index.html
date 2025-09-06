@@ -33,11 +33,33 @@
     let html = '';
     for(let i=1;i<=512;i++) html += makeRow(i);
     table.innerHTML = html;
+
+    function loadDMX() {
+      fetch('/dmx')
+        .then(r => r.text())
+        .then(txt => {
+          let arr = txt.trim().split(/\s+/);
+          for(let i=1;i<=512;i++) {
+            let val = parseInt(arr[i-1], 16);
+            dmx[i] = val;
+            document.getElementById('slider'+i).value = val;
+            document.getElementById('status'+i).textContent = val;
+            document.getElementById('toggle'+i).checked = (val==255);
+            let row = document.getElementById('slider'+i).closest('tr');
+            row.style.backgroundColor = (val > 0) ? 'yellow' : '';
+          }
+        });
+    }
+    window.onload = loadDMX;
+    setInterval(loadDMX, 10);
+
     function sliderChanged(i) {
       let val = document.getElementById('slider'+i).value;
       dmx[i] = parseInt(val);
       document.getElementById('status'+i).textContent = val;
       document.getElementById('toggle'+i).checked = (val==255);
+      let row = document.getElementById('slider'+i).closest('tr');
+      row.style.backgroundColor = (val > 0) ? 'yellow' : '';
       sendSingle(i, val);
     }
     function toggleChanged(i) {
@@ -46,6 +68,8 @@
       dmx[i] = val;
       document.getElementById('slider'+i).value = val;
       document.getElementById('status'+i).textContent = val;
+      let row = document.getElementById('slider'+i).closest('tr');
+      row.style.backgroundColor = (val > 0) ? 'yellow' : '';
       sendSingle(i, val);
     }
     function sendSingle(i, val) {

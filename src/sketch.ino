@@ -66,7 +66,22 @@ void setup() {
     will be complete! */
   dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
 
+  
+ // Für Betrieb als Access Point
   WiFi.softAP(ssid, password);
+
+  // Für Betrieb als Client
+  /*
+   WiFi.begin("FRITZ!Box 6890 HR", "XXXXXXXXX");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nMit WLAN verbunden, IP-Adresse: ");
+  Serial.println(WiFi.localIP());
+*/
+
+
   server.on("/", handleRoot);
   server.on("/dmx", handleDMX);
   server.begin();
@@ -89,12 +104,16 @@ void handleDMX() {
       int v = server.arg(argName).toInt();
       data[i] = constrain(v, 0, 255);
     }
-    Serial.print("Ch" + String(i) + "->" + String(data[i])+" ");
-    datastring += "Ch" + String(i) + "->" + String(data[i])+" ";
-
   }
-  Serial.println(""); 
+  // datastring als 512 Hex-Zahlen ausgeben
+  for (int i = 1; i <= 512; i++) {
+    if (data[i] < 16) datastring += "0"; // führende Null
+    datastring += String(data[i], HEX);
+    if (i < 512) datastring += " ";
+  }
+  datastring.toUpperCase();
   server.send(200, "text/plain", datastring);
+  Serial.println(datastring);
 }
 
 void handleRoot() {
