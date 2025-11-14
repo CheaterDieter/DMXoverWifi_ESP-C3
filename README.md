@@ -22,4 +22,4 @@ Short-URL zum GitHub-Projekt: h1.nu/1jo5k
 2) Installiert VS-Studio und Platformio-Plugin.
 3) Nutze die Informationen in der Datei "ESP32-C3 SuperMini Datasheet", um die Onboard-LED auf dem ESP32 blinken zu lassen. Verwende jedoch VS Studio statt die Arduino IDE.
 4) Ladet den Inhalt des GitHub-Archivs herunter
-5) Testet die Verbindung von PC zu Mikro-Controller und installiert den Code auf den Controller
+5) Installiert den Code des Projekts auf den Controller
