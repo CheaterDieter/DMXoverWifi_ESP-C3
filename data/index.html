@@ -1,3 +1,8 @@
+<!--
+index.html muss in den Speicher geladen werden mit 
+pio run --target uploadfs --upload-port COM10
+-->
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -8,10 +13,78 @@
     th, td { border: 1px solid #aaa; padding: 4px 8px; text-align: center; }
     th, td { width: 25%; }
     input[type=range] { width: 120px; }
+    #hex-display {
+      font-family: monospace;
+      font-size: 10px;
+      background-color: #f0f0f0;
+      padding: 5px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      max-height: 80px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .hex-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    .storage-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .storage-button {
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .storage-button:hover {
+      background-color: #45a049;
+    }
+    .storage-button.load {
+      background-color: #2196F3;
+    }
+    .storage-button.load:hover {
+      background-color: #0b7dda;
+    }
   </style>
 </head>
 <body>
   <h1>DMX 512 Steuerung</h1>
+  
+  <div class="storage-buttons">
+    <div>
+      <button class="storage-button" onclick="saveDMX(1)">Speichern 1</button>
+      <button class="storage-button load" onclick="loadDMXFromSlot(1)">Laden 1</button>
+    </div>
+    <div>
+      <button class="storage-button" onclick="saveDMX(2)">Speichern 2</button>
+      <button class="storage-button load" onclick="loadDMXFromSlot(2)">Laden 2</button>
+    </div>
+    <div>
+      <button class="storage-button" onclick="saveDMX(3)">Speichern 3</button>
+      <button class="storage-button load" onclick="loadDMXFromSlot(3)">Laden 3</button>
+    </div>
+    <div>
+      <button class="storage-button" onclick="saveDMX(4)">Speichern 4</button>
+      <button class="storage-button load" onclick="loadDMXFromSlot(4)">Laden 4</button>
+    </div>
+    <div>
+      <button class="storage-button" onclick="saveDMX(5)">Speichern 5</button>
+      <button class="storage-button load" onclick="loadDMXFromSlot(5)">Laden 5</button>
+    </div>
+  </div>
+  
+  <div class="hex-title">HEX-Codes der DMX-Kanäle:</div>
+  <div id="hex-display">Lade Daten...</div>
+  
   <table>
     <tr><th>Kanal</th><th>Wert</th><th>An/Aus</th><th>Status</th></tr>
     <tbody id="dmxTable"></tbody>
@@ -21,47 +94,104 @@
   <script>
     // Initialwerte
     let dmx = Array(513).fill(0);
+    let activeElements = new Set(); // Track aktive Elemente (Slider und Checkboxen)
+    let refreshEnabled = true; // Globale Refresh-Steuerung
+    let lastInteractionTime = 0; // Zeitpunkt der letzten Interaktion
+    let currentHexData = ""; // Aktuelle HEX-Daten
+
     function makeRow(i) {
       return `<tr>
         <td>${i}</td>
-        <td><input type='range' min='0' max='255' value='0' id='slider${i}' oninput='sliderChanged(${i})'></td>
-        <td><input type='checkbox' id='toggle${i}' onchange='toggleChanged(${i})'></td>
+        <td><input type='range' min='0' max='255' value='0' id='slider${i}' 
+                   oninput='sliderChanged(${i})'
+                   onmousedown='elementInteractionStart("slider${i}")'
+                   onmouseup='elementInteractionEnd("slider${i}")'
+                   ontouchstart='elementInteractionStart("slider${i}")'
+                   ontouchend='elementInteractionEnd("slider${i}")'></td>
+        <td><input type='checkbox' id='toggle${i}' 
+                   onchange='toggleChanged(${i})'
+                   onmousedown='elementInteractionStart("toggle${i}")'
+                   onmouseup='elementInteractionEnd("toggle${i}")'
+                   ontouchstart='elementInteractionStart("toggle${i}")'
+                   ontouchend='elementInteractionEnd("toggle${i}")'></td>
         <td><span id='status${i}'>0</span></td>
       </tr>`;
     }
+    
     let table = document.getElementById('dmxTable');
     let html = '';
     for(let i=1;i<=512;i++) html += makeRow(i);
     table.innerHTML = html;
 
-    function loadDMX() {
+    function elementInteractionStart(elementId) {
+      activeElements.add(elementId);
+      refreshEnabled = false;
+      lastInteractionTime = Date.now();
+    }
+
+    function elementInteractionEnd(elementId) {
+      activeElements.delete(elementId);
+      
+      // Re-enable Refresh wenn keine Elemente mehr aktiv sind
+      if (activeElements.size === 0) {
+        // Warte 100ms nach der letzten Interaktion bevor Refresh wieder startet
+        setTimeout(() => {
+          refreshEnabled = true;
+        }, 100);
+      }
+    }
+
+    function updateHexDisplay(hexData) {
+      currentHexData = hexData;
+      document.getElementById('hex-display').textContent = hexData;
+    }
+
+    function loadDMXData() {
+      // Überspringen wenn Refresh pausiert oder innerhalb von 100ms nach Interaktion
+      if (!refreshEnabled || (Date.now() - lastInteractionTime) < 100) return;
+      
       fetch('/dmx')
         .then(r => r.text())
         .then(txt => {
+          // HEX-Daten aktualisieren
+          updateHexDisplay(txt);
+          
           let arr = txt.trim().split(/\s+/);
           for(let i=1;i<=512;i++) {
+            // Überspringen wenn Element aktiv ist
+            if (activeElements.has('slider'+i) || activeElements.has('toggle'+i)) continue;
+            
             let val = parseInt(arr[i-1], 16);
             dmx[i] = val;
             document.getElementById('slider'+i).value = val;
             document.getElementById('status'+i).textContent = val;
-            document.getElementById('toggle'+i).checked = (val==255);
+            document.getElementById('toggle'+i).checked = (val == 255);
             let row = document.getElementById('slider'+i).closest('tr');
             row.style.backgroundColor = (val > 0) ? 'yellow' : '';
           }
-        });
+        })
+        .catch(error => console.error('Fehler beim Laden der DMX-Daten:', error));
     }
-    window.onload = loadDMX;
-    setInterval(loadDMX, 10);
+    
+    window.onload = loadDMXData;
+    setInterval(loadDMXData, 100); // Erhöhtes Intervall für bessere Performance
 
     function sliderChanged(i) {
       let val = document.getElementById('slider'+i).value;
       dmx[i] = parseInt(val);
       document.getElementById('status'+i).textContent = val;
-      document.getElementById('toggle'+i).checked = (val==255);
+      document.getElementById('toggle'+i).checked = (val == 255);
       let row = document.getElementById('slider'+i).closest('tr');
       row.style.backgroundColor = (val > 0) ? 'yellow' : '';
       sendSingle(i, val);
+      lastInteractionTime = Date.now(); // Zeitpunkt der Interaktion aktualisieren
+      
+      // HEX-Daten lokal aktualisieren
+      let hexValues = currentHexData.split(' ');
+      hexValues[i-1] = val.toString(16).padStart(2, '0').toUpperCase();
+      updateHexDisplay(hexValues.join(' '));
     }
+    
     function toggleChanged(i) {
       let checked = document.getElementById('toggle'+i).checked;
       let val = checked ? 255 : 0;
@@ -71,19 +201,57 @@
       let row = document.getElementById('slider'+i).closest('tr');
       row.style.backgroundColor = (val > 0) ? 'yellow' : '';
       sendSingle(i, val);
+      lastInteractionTime = Date.now(); // Zeitpunkt der Interaktion aktualisieren
+      
+      // HEX-Daten lokal aktualisieren
+      let hexValues = currentHexData.split(' ');
+      hexValues[i-1] = val.toString(16).padStart(2, '0').toUpperCase();
+      updateHexDisplay(hexValues.join(' '));
     }
+    
     function sendSingle(i, val) {
       let params = `${i}=${val}`;
       fetch('/dmx?' + params)
         .then(r => r.text())
-        .then(txt => console.log('DMX', i, val, txt));
+        .then(txt => {
+          console.log('DMX', i, val, txt);
+          // HEX-Daten nach erfolgreichem Senden aktualisieren
+          updateHexDisplay(txt);
+        })
+        .catch(error => console.error('Fehler beim Senden:', error));
     }
+    
     function sendAll() {
       let params = [];
       for(let i=1;i<=512;i++) params.push(i+'='+dmx[i]);
       fetch('/dmx?' + params.join('&'))
         .then(r => r.text())
-        .then(txt => alert('Gesendet!'));
+        .then(txt => {
+          alert('Gesendet!');
+          // HEX-Daten nach erfolgreichem Senden aktualisieren
+          updateHexDisplay(txt);
+        })
+        .catch(error => console.error('Fehler beim Senden aller Werte:', error));
+    }
+    
+    function saveDMX(slot) {
+      fetch('/save?slot=' + slot)
+        .then(r => r.text())
+        .then(txt => {
+          alert('DMX-Werte in Slot ' + slot + ' gespeichert: ' + txt);
+        })
+        .catch(error => console.error('Fehler beim Speichern:', error));
+    }
+    
+    function loadDMXFromSlot(slot) {
+      fetch('/load?slot=' + slot)
+        .then(r => r.text())
+        .then(txt => {
+          alert('DMX-Werte aus Slot ' + slot + ' geladen: ' + txt);
+          // Nach dem Laden die Anzeige aktualisieren
+          loadDMXData();
+        })
+        .catch(error => console.error('Fehler beim Laden:', error));
     }
   </script>
 </body>

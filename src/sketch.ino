@@ -2,14 +2,13 @@
 pio run --target uploadfs --upload-port COM10
 */
 
-
-
 #include <Arduino.h>
 #include <esp_dmx.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include <FS.h>
 #include <SPIFFS.h>
+#include <Preferences.h>
 
 int led = 8;
 
@@ -41,9 +40,61 @@ const char* password = "dmx12345";
 WebServer server(80);
 bool dmxEnabled = true;
 
+// Preferences für das Speichern der DMX-Werte
+Preferences preferences;
 
+void saveDMXData(int slot) {
+  char key[10];
+  snprintf(key, sizeof(key), "dmx%d", slot);
+  
+  preferences.begin("dmx-data", false);
+  preferences.putBytes(key, data, DMX_PACKET_SIZE);
+  preferences.end();
+  Serial.printf("DMX-Daten in Slot %d gespeichert\n", slot);
+}
 
+void loadDMXData(int slot) {
+  char key[10];
+  snprintf(key, sizeof(key), "dmx%d", slot);
+  
+  preferences.begin("dmx-data", true);
+  size_t len = preferences.getBytes(key, data, DMX_PACKET_SIZE);
+  preferences.end();
+  
+  if (len == DMX_PACKET_SIZE) {
+    Serial.printf("DMX-Daten aus Slot %d geladen\n", slot);
+  } else {
+    Serial.printf("Keine gespeicherten DMX-Daten in Slot %d gefunden\n", slot);
+  }
+}
 
+void handleSave() {
+  if (server.hasArg("slot")) {
+    int slot = server.arg("slot").toInt();
+    if (slot >= 1 && slot <= 5) {
+      saveDMXData(slot);
+      server.send(200, "text/plain", "DMX-Daten gespeichert in Slot " + String(slot));
+    } else {
+      server.send(400, "text/plain", "Ungültiger Slot");
+    }
+  } else {
+    server.send(400, "text/plain", "Slot parameter fehlt");
+  }
+}
+
+void handleLoad() {
+  if (server.hasArg("slot")) {
+    int slot = server.arg("slot").toInt();
+    if (slot >= 1 && slot <= 5) {
+      loadDMXData(slot);
+      server.send(200, "text/plain", "DMX-Daten geladen aus Slot " + String(slot));
+    } else {
+      server.send(400, "text/plain", "Ungültiger Slot");
+    }
+  } else {
+    server.send(400, "text/plain", "Slot parameter fehlt");
+  }
+}
 
 void setup() {
   /* Start the serial connection back to the computer so that we can log
@@ -66,8 +117,7 @@ void setup() {
     will be complete! */
   dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
 
-  
- // Für Betrieb als Access Point
+  // Für Betrieb als Access Point
   WiFi.softAP(ssid, password);
 
   // Für Betrieb als Client
@@ -84,11 +134,14 @@ void setup() {
 
   server.on("/", handleRoot);
   server.on("/dmx", handleDMX);
+  server.on("/save", handleSave);
+  server.on("/load", handleLoad);
   server.begin();
   Serial.println("HTTP API server started");
 }
 
 void loop() {
+  Serial.print(".");
   server.handleClient();
   dmx_write(dmxPort, data, DMX_PACKET_SIZE);
   dmx_send_num(dmxPort, DMX_PACKET_SIZE);
@@ -96,16 +149,16 @@ void loop() {
 }
 
 void handleDMX() {
-  String datastring = "";
-  for ( int i = 1; i <= 255; i++)
-  {
+  for (int i = 1; i <= 255; i++) {
     String argName = String(i);
     if (server.hasArg(argName)) {
       int v = server.arg(argName).toInt();
       data[i] = constrain(v, 0, 255);
     }
   }
+  
   // datastring als 512 Hex-Zahlen ausgeben
+  String datastring = "";
   for (int i = 1; i <= 512; i++) {
     if (data[i] < 16) datastring += "0"; // führende Null
     datastring += String(data[i], HEX);
